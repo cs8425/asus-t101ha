@@ -1,0 +1,4 @@
+# for ASUS keyboard & touchpad
+#ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", ATTR{idProduct}=="183d", RUN+="/usr/bin/dock.sh 1"
+ACTION=="add|remove", SUBSYSTEM=="usb", ENV{PRODUCT}=="b05/183d/9", RUN+="/usr/bin/dock.sh $env{ACTION} $kernel"
+
