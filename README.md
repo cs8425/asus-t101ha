@@ -82,7 +82,7 @@ NRDEVICES=1
 # Calculate memory to use for zram (1/2 of ram)
 totalmem=`LC_ALL=C free | grep -e "^Mem:" | sed -e 's/^Mem: *//' -e 's/  *.*//'`
 #mem=$(((totalmem / 2 / ${NRDEVICES}) * 1024))
-mem=$(((totalmem / 4 / ${NRDEVICES}) * 1024))
+mem=$(((totalmem / 3 / ${NRDEVICES}) * 1024))
 ```
 
 

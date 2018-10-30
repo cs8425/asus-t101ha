@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+//	"flag"
 	"fmt"
 //	"log"
 	"runtime"
@@ -10,7 +10,9 @@ import (
 	"os/exec"
 
 //	"bufio"
-//	"os"
+	"os"
+	"syscall" // flock
+
 	"math"
 	"net"
 	"path/filepath"
@@ -20,13 +22,13 @@ import (
 )
 
 const (
-	ACC_X_RAW = "/sys/bus/iio/devices/iio:device0/in_accel_x_raw"
-	ACC_SCALE = "/sys/bus/iio/devices/iio:device0/in_accel_scale"
-
 	ACC_DEV_PATH = "/sys/bus/iio/devices/"
 	ACC_NAME = "accel_3d"
 	ACC_G float64 = 0.7
 
+	DOCK_CHECK_PATH = "/sys/bus/usb/devices/"
+
+	LOCK_FILE_PATH = "/dev/shm/T101HA.lock"
 	LOCK_PATH = "/dev/shm/T101HA-lock"
 	DOCK_PATH = "/dev/shm/T101HA-dock"
 
@@ -41,17 +43,17 @@ const (
         UNLOCK
 )
 
-var ROT = flag.Int("r", 1, "rot")
-var T = flag.Int("t", 1, "touch")
-
 var acc *Acc
 
 func main() {
-	flag.Parse()
-
 	// runtime.GOMAXPROCS(runtime.NumCPU())
 	runtime.GOMAXPROCS(1)
 	fmt.Println("init...")
+
+	dockedCh := make(chan bool, 1) // from udev
+	rotLockCh := make(chan bool, 1) // from user shortcut
+	rotCh := make(chan int, 1) // from sysfs
+	exitCh := make(chan bool, 1) // for acc worker exit
 
 	acc = NewAcc(ACC_DEV_PATH, ACC_NAME)
 	fmt.Println("ACC_DEV = ", acc)
@@ -59,29 +61,59 @@ func main() {
 	x, y, z, ok := acc.GetAcc()
 	fmt.Println("ACC = ", x, y, z, ok, acc.readRot())
 
-	//doRot(acc.readRot(), true)
-	/*if *T == 1 {
-		doRot(*ROT, true)
-	} else {
-		doRot(*ROT, false)
-	}*/
-	//return
-
-	dockedCh := make(chan bool, 1) // from udev
-	rotLockCh := make(chan bool, 1) // from user shortcut
-	rotCh := make(chan int, 1) // from sysfs
-	exitCh := make(chan bool, 1) // for acc worker exit
-
-	go pollDock(dockedCh)
-	go pollLock(rotLockCh)
-
-	// TODO: check and start
-	docked := true
+	docked := ckeckDock()
 	rotLock := false
-	rot := 1 // 0 = normal, 1 = right, 2 = inverse, 3 = left
+	rot := acc.readRot() // 0 = normal, 1 = right, 2 = inverse, 3 = left
+
+	fmt.Println("docked = ", docked)
+
+	unlocker, ok := tryflock(LOCK_FILE_PATH)
+	if !ok {
+		fmt.Println("daemon already started...!?")
+		return
+	}
+	defer unlocker()
+
+	go pollDock(docked, dockedCh)
+	go pollLock(rotLockCh)
 
 	state := DOCKED
 	state0 := DOCKED
+	update := func(){
+		switch state {
+		case DOCKED: // acc off, touch on&off
+			if state0 == UNLOCK {
+			// stop poll acc
+				exitCh <- true
+			}
+			if state0 == LOCK {
+			// force rotate
+				doRot(1, true)
+			}
+
+		case LOCK: // acc off, touch on
+			if state0 == UNLOCK {
+			// stop poll acc
+				exitCh <- true
+			}
+
+		case UNLOCK: // acc on, touch on
+			if state0 != UNLOCK {
+			// start poll acc
+				go pollAccWorker(rot, rotCh, exitCh)
+			}
+			// do rot
+			doRot(rot, true)
+		}
+
+		state0 = state
+	}
+
+	if !docked {
+		state = UNLOCK
+		update()
+	}
+
 	for {
 		select {
 		case docked = <-dockedCh:
@@ -106,37 +138,58 @@ func main() {
 			fmt.Println("[rot]", rot)
 		}
 
-		switch state {
-		case DOCKED: // acc off, touch on&off
-			if state0 == UNLOCK {
-			// stop poll acc
-				exitCh <- true
-			}
-			if state0 == LOCK {
-			// force rotate
-				doRot(1, true)
-			}
-
-		case LOCK: // acc off, touch on
-			if state0 == UNLOCK {
-			// stop poll acc
-				exitCh <- true
-			}
-
-		case UNLOCK: // acc on, touch on
-			if state0 != UNLOCK {
-			// start poll acc
-				go pollAccWorker(rotCh, exitCh)
-			}
-			// do rot
-			doRot(rot, true)
-		}
-
-		state0 = state
+		update()
 	}
 }
 
+func readFloat(path string) (float64, error) {
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		return 0.0, err
+	}
+
+	n, err := strconv.ParseFloat(string(buf[:len(buf)-1]), 64)
+	if err != nil {
+		return 0.0, err
+	}
+
+	return n, nil
+}
+
+func readInt(path string) (int, error) {
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+
+	n, err := strconv.ParseInt(string(buf[:len(buf)-1]), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(n), nil
+}
+
+func tryflock(path string) (func(), bool) {
+	f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0400)
+	if err != nil {
+		return nil, false
+	}
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err != nil {
+		return nil, false
+	}
+
+	unlocker := func(){
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}
+
+	return unlocker, true
+}
+
 func poller(sock string, handler func (c net.Conn)) {
+	os.Remove(sock) // try remove
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		fmt.Println("[dock]Listen error:", err)
@@ -154,8 +207,8 @@ func poller(sock string, handler func (c net.Conn)) {
 	}
 }
 
-func pollDock(dockedCh chan bool) {
-	dock0 := true
+func pollDock(docked bool, dockedCh chan bool) {
+	dock0 := docked
 	buf := make([]byte, 2, 2)
 	handler := func (c net.Conn) {
 		defer c.Close()
@@ -223,8 +276,8 @@ func pollLock(rotLockCh chan bool) {
 	poller(LOCK_PATH, handler)
 }
 
-func pollAccWorker(rotCh chan int, exitCh chan bool) {
-	rot0 := acc.readRot()
+func pollAccWorker(rot1 int, rotCh chan int, exitCh chan bool) {
+	rot0 := rot1 //acc.readRot()
 	for {
 		select {
 		case <-exitCh:
@@ -284,32 +337,36 @@ func setTouch(touch bool) {
 	fmt.Println("[xinput]setTouch()", touch, err)
 }
 
-func readFloat(path string) (float64, error) {
-	buf, err := ioutil.ReadFile(path)
+func ckeckDock() (bool) {
+	files, err := ioutil.ReadDir(DOCK_CHECK_PATH)
 	if err != nil {
-		return 0.0, err
+		//fmt.Println("[dock][ReadDir]err:", err)
+		return false
+	}
+	//fmt.Println("[dock][ReadDir]", files)
+
+	for _, f := range files {
+		dir := filepath.Join(DOCK_CHECK_PATH, f.Name())
+		//fmt.Println("[dock][try dev]", dir)
+
+		vid, err := ioutil.ReadFile(filepath.Join(dir, "idVendor"))
+		if err != nil {
+			continue
+		}
+		vid = vid[:len(vid)-1]
+
+		pid, err := ioutil.ReadFile(filepath.Join(dir, "idProduct"))
+		if err != nil {
+			continue
+		}
+		pid = pid[:len(pid)-1]
+
+		if string(pid) == "183d" && string(vid) == "0b05" {
+			return true
+		}
 	}
 
-	n, err := strconv.ParseFloat(string(buf[:len(buf)-1]), 64)
-	if err != nil {
-		return 0.0, err
-	}
-
-	return n, nil
-}
-
-func readInt(path string) (int, error) {
-	buf, err := ioutil.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-
-	n, err := strconv.ParseInt(string(buf[:len(buf)-1]), 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return int(n), nil
+	return false
 }
 
 type Acc struct {
@@ -387,6 +444,7 @@ func (acc *Acc) GetAcc() (fx float64, fy float64, fz float64, ok bool) {
 	return float64(x) * acc.scale, float64(y) * acc.scale, float64(z) * acc.scale, true
 }
 
+// 0 = normal, 1 = right, 2 = inverse, 3 = left
 func (acc *Acc) readRot() (int) {
 	x, y, _, ok := acc.GetAcc()
 	if !ok {

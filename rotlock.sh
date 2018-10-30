@@ -10,12 +10,12 @@ case "$1" in
 		echo 0 | nc -q 0 -U $SOCK
 		;;
 
-	T)
+	T | toggle)
 		echo T | nc -q 0 -U $SOCK
 		;;
 
 	*)
-		echo "Usage: $0 {lock|1|unlock|0|T}"
+		echo "Usage: $0 {lock|1|unlock|0|toggle|T}"
 		;;
 esac
 
