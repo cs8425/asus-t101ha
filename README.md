@@ -8,15 +8,15 @@ spec:
 
 ## Status
 ### Work out-of-box:
-* wifi (only 2.4G 802.11b/g)
+* wifi (seems only 2.4G 802.11b/g)
 * bluetooth
 * touchpad (2 point scroll works)
 * touch screen (single point)
 
 ### Need config:
-sound (speaker ok, headphone jack not work)
-screen & touch screen rotation
-screen brightness
+* sound (speaker ok, headphone jack not work)
+* screen & touch screen rotation
+* screen brightness
 
 ### Not work:
 * webcam video
@@ -33,12 +33,38 @@ screen brightness
 * sleep: no
 
 ### Buttons:
-* power: no
+* power: yes
 * vol up/down: yes
 
 ### power:
 * suspend to RAM: yes
 * suspend to disk: no
+
+## Screen rotate
+for X user:
+```
+xinput set-prop 'SIS0457:00 0457:11ED' 'Coordinate Transformation Matrix' 0 1 0 -1 0 1 0 0 1 # touch screen
+xrandr --output 'DSI-1' --rotate right # screen
+```
+do not need reboot
+
+---
+for kernel console:
+edit `/etc/default/grub`,
+add `fbcon=rotate:1` to line:
+
+```
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+```
+
+like
+
+```
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash fbcon=rotate:1"
+```
+
+run as root: `update-grub`
+need reboot
 
 ## Sound
 edit `/etc/modprobe.d/blacklist.conf`
@@ -46,8 +72,7 @@ and add the following line :
 ```
 blacklist snd_hdmi_lpe_audio
 ```
-do reboot
-
+need reboot
 
 ## Brightness
 edit `/etc/initramfs-tools/modules`
@@ -65,7 +90,7 @@ RESUME=none
 ```
 
 run as root: `update-initramfs -u`
-do reboot
+need reboot
 
 ## Tweaks
 ### zram
@@ -85,4 +110,6 @@ totalmem=`LC_ALL=C free | grep -e "^Mem:" | sed -e 's/^Mem: *//' -e 's/  *.*//'`
 mem=$(((totalmem / 3 / ${NRDEVICES}) * 1024))
 ```
 
+### screen rotate scripts
+see `daemon.md`
 
