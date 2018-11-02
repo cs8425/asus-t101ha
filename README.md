@@ -1,6 +1,6 @@
 # Ubuntu 18.04 on ASUS Transformer Book T101HA
 
-spec:
+official spec:
 * cpu: Intel(R) Atom(TM) x5-Z8350  CPU @ 1.44GHz
 * RAM: DDR3 1600MHz 2G
 * disk: eMMC 64G
@@ -12,6 +12,7 @@ spec:
 * bluetooth
 * touchpad (2 point scroll works)
 * touch screen (single point)
+* micro SD card reader
 
 ### Need config:
 * sound (speaker ok, headphone jack not work)
@@ -23,6 +24,9 @@ spec:
 * webcam audio (not test)
 * mic
 
+### Not test:
+* micro HDMI
+* micro HDMI audio output
 
 ### Hotkeys:
 * screen brightness: no
@@ -40,76 +44,42 @@ spec:
 * suspend to RAM: yes
 * suspend to disk: no
 
-## Screen rotate
-for X user:
-```
-xinput set-prop 'SIS0457:00 0457:11ED' 'Coordinate Transformation Matrix' 0 1 0 -1 0 1 0 0 1 # touch screen
-xrandr --output 'DSI-1' --rotate right # screen
-```
-do not need reboot
+## HW info
+see `hwinfo.md`
 
----
-for kernel console:
-edit `/etc/default/grub`,
-add `fbcon=rotate:1` to line:
+## setup/install
+see `setup.md` and `daemon.md`
+
+## bench
+* `uname -a`
 
 ```
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+Linux cs8425-T101HA 4.15.0-38-generic #41-Ubuntu SMP Wed Oct 10 10:59:38 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux
 ```
 
-like
+
+* `7z b`
 
 ```
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash fbcon=rotate:1"
+7-Zip [64] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21
+p7zip Version 16.02 (locale=zh_TW.UTF-8,Utf16=on,HugeFiles=on,64 bits,4 CPUs Intel(R) Atom(TM) x5-Z8350  CPU @ 1.44GHz (406C4),ASM,AES-NI)
+
+      Intel(R) Atom(TM) x5-Z8350  CPU @ 1.44GHz (406C4)
+CPU Freq:  1876  1891  1912  1912  1913  1913  1900  1913  1912
+
+RAM size:    1825 MB,  # CPU hardware threads:   4
+RAM usage:    882 MB,  # Benchmark threads:      4
+
+                       Compressing  |                  Decompressing
+Dict     Speed Usage    R/U Rating  |      Speed Usage    R/U Rating
+         KiB/s     %   MIPS   MIPS  |      KiB/s     %   MIPS   MIPS
+
+22:       3717   335   1080   3617  |      67603   391   1473   5768
+23:       3685   346   1084   3755  |      61303   365   1455   5304
+24:       3586   353   1091   3856  |      65106   392   1457   5715
+25:       3557   360   1128   4062  |      63024   393   1428   5609
+----------------------------------  | ------------------------------
+Avr:             349   1096   3822  |              385   1453   5599
+Tot:             367   1274   4711
 ```
-
-run as root: `update-grub`
-need reboot
-
-## Sound
-edit `/etc/modprobe.d/blacklist.conf`
-and add the following line :
-```
-blacklist snd_hdmi_lpe_audio
-```
-need reboot
-
-## Brightness
-edit `/etc/initramfs-tools/modules`
-and add the following lines :
-```
-pwm-lpss
-pwm-lpss-platform
-```
-
-create/edit `/etc/initramfs-tools/conf.d/noresume.conf`
-and add the following lines if only use zram :
-```
-# Disable resume (this system has no swap/only zram)
-RESUME=none
-```
-
-run as root: `update-initramfs -u`
-need reboot
-
-## Tweaks
-### zram
-
-1. install zram-config: `apt install zram-config`
-2. edit `/usr/bin/init-zram-swapping`
-
-```
-# load dependency modules
-#NRDEVICES=$(grep -c ^processor /proc/cpuinfo | sed 's/^0$/1/')
-NRDEVICES=1
-
-
-# Calculate memory to use for zram (1/2 of ram)
-totalmem=`LC_ALL=C free | grep -e "^Mem:" | sed -e 's/^Mem: *//' -e 's/  *.*//'`
-#mem=$(((totalmem / 2 / ${NRDEVICES}) * 1024))
-mem=$(((totalmem / 3 / ${NRDEVICES}) * 1024))
-```
-
-### screen rotate scripts
-see `daemon.md`
 
