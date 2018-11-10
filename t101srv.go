@@ -1,3 +1,4 @@
+// go build -ldflags="-s -w" t101srv.go
 package main
 
 import (
@@ -24,7 +25,7 @@ import (
 const (
 	ACC_DEV_PATH = "/sys/bus/iio/devices/"
 	ACC_NAME = "accel_3d"
-	ACC_G float64 = 0.7
+	ACC_G float64 = 0.8
 
 	DOCK_CHECK_PATH = "/sys/bus/usb/devices/"
 
@@ -86,7 +87,7 @@ func main() {
 			// stop poll acc
 				exitCh <- true
 			}
-			if state0 == LOCK {
+			if state0 != DOCKED {
 			// force rotate
 				doRot(1, true)
 			}
@@ -451,18 +452,21 @@ func (acc *Acc) readRot() (int) {
 		return -1 // error
 	}
 
-	if math.Abs(x) > ACC_G {
-		if x < 0 {
-			return 1 // right
-		} else {
-			return 3 // left
+	if math.Abs(x) > math.Abs(y) {
+		if math.Abs(x) > ACC_G {
+			if x < 0 {
+				return 1 // right
+			} else {
+				return 3 // left
+			}
 		}
-	}
-	if math.Abs(y) > ACC_G {
-		if y < 0 {
-			return 0 // normal
-		} else {
-			return 2 // inverse
+	} else {
+		if math.Abs(y) > ACC_G {
+			if y < 0 {
+				return 0 // normal
+			} else {
+				return 2 // inverse
+			}
 		}
 	}
 

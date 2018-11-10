@@ -5,10 +5,13 @@ official spec:
 * RAM: DDR3 1600MHz 2G
 * disk: eMMC 64G
 * network: wifi 802.11ac, bluetooth 4.1
+* default OS: win10 home 64bit
 
 ## Status
 ### Work out-of-box:
-* wifi (seems only 2.4G 802.11b/g)
+* wifi
+  * 2.4G: b/g/n
+  * 5G: n/ac, a not test
 * bluetooth
 * touchpad (2 point scroll works)
 * touch screen (single point)
